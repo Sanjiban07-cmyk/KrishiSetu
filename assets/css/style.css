@@ -1,0 +1,262 @@
+/* =========================================
+   KRISHISETU - DESIGN SYSTEM
+   ========================================= */
+
+:root {
+    /* Primary Colors */
+    --primary: #087443;
+    --primary-dark: #055c35;
+    --primary-light: #e8f5ee;
+
+    /* Accent */
+    --accent: #f2b84b;
+    --accent-light: #fff7e6;
+
+    /* Backgrounds */
+    --background: #f7f9f7;
+    --surface: #ffffff;
+
+    /* Text */
+    --text-primary: #17352a;
+    --text-secondary: #61716a;
+    --text-light: #8a9892;
+
+    /* Status */
+    --success: #16834d;
+    --warning: #d88900;
+    --danger: #c93434;
+    --info: #2878b5;
+
+    /* Borders */
+    --border: #dfe7e2;
+
+    /* Shadows */
+    --shadow-sm: 0 2px 8px rgba(20, 50, 35, 0.06);
+    --shadow-md: 0 6px 20px rgba(20, 50, 35, 0.09);
+
+    /* Border Radius */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+
+    /* Layout */
+    --container-width: 1200px;
+}
+
+
+/* =========================================
+   RESET
+   ========================================= */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: var(--background);
+    color: var(--text-primary);
+    line-height: 1.6;
+}
+
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
+button,
+input,
+select,
+textarea {
+    font-family: inherit;
+}
+
+
+/* =========================================
+   CONTAINER
+   ========================================= */
+
+.container {
+    width: min(92%, var(--container-width));
+    margin: 0 auto;
+}
+
+
+/* =========================================
+   BUTTONS
+   ========================================= */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+
+    border: none;
+    border-radius: var(--radius-md);
+
+    padding: 11px 20px;
+
+    font-size: 15px;
+    font-weight: 600;
+
+    cursor: pointer;
+    transition: 0.2s ease;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--primary-dark);
+}
+
+.btn-outline {
+    background: white;
+    color: var(--primary);
+    border: 1px solid var(--primary);
+}
+
+.btn-outline:hover {
+    background: var(--primary-light);
+}
+
+
+/* =========================================
+   CARDS
+   ========================================= */
+
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 20px;
+}
+
+
+/* =========================================
+   FORMS
+   ========================================= */
+
+.form-group {
+    margin-bottom: 18px;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 7px;
+
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.form-control {
+    width: 100%;
+
+    padding: 12px 14px;
+
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+
+    background: white;
+    color: var(--text-primary);
+
+    font-size: 15px;
+
+    outline: none;
+}
+
+.form-control:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(8, 116, 67, 0.1);
+}
+
+
+/* =========================================
+   STATUS BADGES
+   ========================================= */
+
+.badge {
+    display: inline-block;
+
+    padding: 4px 10px;
+
+    border-radius: 20px;
+
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.badge-success {
+    background: #e8f7ef;
+    color: var(--success);
+}
+
+.badge-warning {
+    background: #fff4db;
+    color: var(--warning);
+}
+
+.badge-danger {
+    background: #fdeaea;
+    color: var(--danger);
+}
+
+.badge-info {
+    background: #e8f3fa;
+    color: var(--info);
+}
+
+
+/* =========================================
+   SECTION
+   ========================================= */
+
+.section {
+    padding: 60px 0;
+}
+
+.section-title {
+    font-size: 32px;
+    line-height: 1.25;
+    margin-bottom: 12px;
+}
+
+.section-description {
+    color: var(--text-secondary);
+    max-width: 650px;
+}
+
+
+/* =========================================
+   RESPONSIVE
+   ========================================= */
+
+@media (max-width: 768px) {
+
+    .container {
+        width: 94%;
+    }
+
+    .section {
+        padding: 40px 0;
+    }
+
+    .section-title {
+        font-size: 26px;
+    }
+
+    .btn {
+        width: 100%;
+    }
+}
