@@ -1,24 +1,12 @@
 # XAMPP / local files
 *.log
 
-# IDE files
-.vscode/
-.idea/
+# Environment / secrets
+.env
+
+# Local database configuration
+config/database.php
 
 # OS files
 .DS_Store
 Thumbs.db
-
-# Temporary files
-*.tmp
-*.temp
-
-# PHP temporary files
-*.cache
-
-# Local environment / secrets
-.env
-.env.*
-
-# Database dumps
-*.sql

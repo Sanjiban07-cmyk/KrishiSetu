@@ -11,6 +11,47 @@ if (!isset($_SESSION["user_id"]) || $_SESSION["role"] !== "farmer") {
 $name = $_SESSION["name"];
 $language = $_SESSION["language"];
 
+/* Get latest booking for this farmer */
+require_once "../config/database.php";
+
+$userId = $_SESSION["user_id"];
+
+$latestBooking = null;
+
+$stmt = $conn->prepare("
+    SELECT
+        b.booking_token,
+        b.status AS booking_status,
+        pc.centre_name,
+        s.slot_date,
+        s.start_time,
+        s.end_time,
+        p.status AS procurement_status
+    FROM bookings b
+    JOIN farmers f
+        ON b.farmer_id = f.id
+    JOIN procurement_centres pc
+        ON b.centre_id = pc.id
+    JOIN slots s
+        ON b.slot_id = s.id
+    LEFT JOIN procurement p
+        ON p.booking_id = b.id
+    WHERE f.user_id = ?
+    ORDER BY b.created_at DESC
+    LIMIT 1
+");
+
+$stmt->bind_param("i", $userId);
+$stmt->execute();
+
+$result = $stmt->get_result();
+
+if ($result->num_rows > 0) {
+    $latestBooking = $result->fetch_assoc();
+}
+
+$stmt->close();
+
 ?>
 
 <!DOCTYPE html>
@@ -458,7 +499,7 @@ $language = $_SESSION["language"];
 
             <!-- Booking -->
 
-            <a href="booking.php"
+            <a href="centres.php"
                class="dashboard-card">
 
                 <div class="dashboard-card-icon">
@@ -590,10 +631,56 @@ $language = $_SESSION["language"];
                     Your booking and procurement activity will appear here.
                 </p>
 
-                <div class="status-empty">
-                    No active booking yet.
-                </div>
+                <?php if ($latestBooking): ?>
 
+    <div class="status-empty" style="text-align:left;">
+
+        <strong style="color:var(--primary);">
+            <?= htmlspecialchars($latestBooking["booking_token"]) ?>
+        </strong>
+
+        <p style="margin-top:10px;">
+            <strong>Centre:</strong>
+            <?= htmlspecialchars($latestBooking["centre_name"]) ?>
+        </p>
+
+        <p>
+            <strong>Date:</strong>
+            <?= date("d M Y", strtotime($latestBooking["slot_date"])) ?>
+        </p>
+
+        <p>
+            <strong>Time:</strong>
+            <?= date("h:i A", strtotime($latestBooking["start_time"])) ?>
+            -
+            <?= date("h:i A", strtotime($latestBooking["end_time"])) ?>
+        </p>
+
+        <p>
+            <strong>Booking Status:</strong>
+            <?= htmlspecialchars(ucfirst($latestBooking["booking_status"])) ?>
+        </p>
+
+        <?php if (!empty($latestBooking["procurement_status"])): ?>
+
+            <p>
+                <strong>Procurement:</strong>
+                <?= htmlspecialchars(
+                    ucfirst($latestBooking["procurement_status"])
+                ) ?>
+            </p>
+
+        <?php endif; ?>
+
+    </div>
+
+<?php else: ?>
+
+    <div class="status-empty">
+        No active booking yet.
+    </div>
+
+<?php endif; ?>
             </div>
 
 
