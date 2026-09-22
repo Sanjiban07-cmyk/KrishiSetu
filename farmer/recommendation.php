@@ -1,30 +1,599 @@
 <?php
+
 session_start();
 
 require_once "../config/database.php";
+require_once "../config/language.php";
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'farmer') {
+
+/* =========================================================
+   FARMER ACCESS
+========================================================= */
+
+if (
+    !isset($_SESSION['user_id']) ||
+    $_SESSION['role'] !== 'farmer'
+) {
     header("Location: ../login.php");
     exit;
 }
 
-/*
-|--------------------------------------------------------------------------
-| Smart Recommendation Engine
-|--------------------------------------------------------------------------
-| The score is transparent and rule-based.
-|
-| Queue             = 30%
-| Slot availability = 25%
-| Remaining capacity= 20%
-| Distance          = 15%
-| Purchase date     = 10%
-|--------------------------------------------------------------------------
-*/
 
-$today = date('Y-m-d');
+$userId = (int)$_SESSION['user_id'];
 
-$sql = "
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function e($value): string
+{
+    return htmlspecialchars(
+        (string)$value,
+        ENT_QUOTES,
+        'UTF-8'
+    );
+}
+
+
+function formatDateValue(?string $date): string
+{
+    if (empty($date)) {
+        return "—";
+    }
+
+    $time = strtotime($date);
+
+    if (!$time) {
+        return "—";
+    }
+
+    return date("d M Y", $time);
+}
+
+
+function formatTimeValue(?string $time): string
+{
+    if (empty($time)) {
+        return "—";
+    }
+
+    $timestamp = strtotime($time);
+
+    if (!$timestamp) {
+        return "—";
+    }
+
+    return date("h:i A", $timestamp);
+}
+
+
+function calculateDistance(
+    ?float $lat1,
+    ?float $lng1,
+    ?float $lat2,
+    ?float $lng2
+): ?float {
+
+    if (
+        $lat1 === null ||
+        $lng1 === null ||
+        $lat2 === null ||
+        $lng2 === null
+    ) {
+        return null;
+    }
+
+    $earthRadius = 6371;
+
+    $lat1Rad = deg2rad($lat1);
+    $lat2Rad = deg2rad($lat2);
+
+    $deltaLat =
+        deg2rad($lat2 - $lat1);
+
+    $deltaLng =
+        deg2rad($lng2 - $lng1);
+
+    $a =
+        sin($deltaLat / 2) *
+        sin($deltaLat / 2)
+        +
+        cos($lat1Rad) *
+        cos($lat2Rad) *
+        sin($deltaLng / 2) *
+        sin($deltaLng / 2);
+
+    $a = min(1, max(0, $a));
+
+    $c =
+        2 *
+        atan2(
+            sqrt($a),
+            sqrt(1 - $a)
+        );
+
+    return $earthRadius * $c;
+}
+
+
+/* =========================================================
+   PAGE TRANSLATIONS
+========================================================= */
+
+$pageText = [
+
+    'en' => [
+
+        'portal' =>
+            'Farmer Portal',
+
+        'dashboard' =>
+            '← Dashboard',
+
+        'title' =>
+            'Smart Recommendation',
+
+        'subtitle' =>
+            'KrishiSetu compares active procurement centres and recommends an option based on queue, slot availability, remaining capacity and purchase schedule.',
+
+        'recommended' =>
+            '⭐ Recommended for You',
+
+        'centre_code' =>
+            'Centre Code',
+
+        'queue_reason' =>
+            'farmers currently in the queue',
+
+        'slots_available' =>
+            'slots available',
+
+        'no_slots' =>
+            'no available slots',
+
+        'remaining_capacity' =>
+            'remaining capacity',
+
+        'recommendation_reason' =>
+            'This centre currently offers the strongest combination of the factors used by KrishiSetu.',
+
+        'recommended_slot' =>
+            'Recommended Slot',
+
+        'estimated_wait' =>
+            'Estimated Waiting Time',
+
+        'minutes' =>
+            'minutes',
+
+        'view_book' =>
+            'View & Book This Centre',
+
+        'score' =>
+            'Recommendation Score',
+
+        'out_of' =>
+            '/ 100',
+
+        'queue' =>
+            'Queue',
+
+        'availability' =>
+            'Slot Availability',
+
+        'capacity' =>
+            'Remaining Capacity',
+
+        'schedule' =>
+            'Purchase Schedule',
+
+        'how_decides' =>
+            'How KrishiSetu Decides',
+
+        'how_decides_text' =>
+            'The recommendation is rule-based and uses the following factors. Distance is shown separately for information and is not included in the visible recommendation score.',
+
+        'queue_condition' =>
+            'Queue Condition',
+
+        'other_options' =>
+            'Other Options',
+
+        'other_options_text' =>
+            'You can still choose any other active centre.',
+
+        'distance' =>
+            'Distance',
+
+        'current_queue' =>
+            'Current Queue',
+
+        'capacity_used' =>
+            'Capacity',
+
+        'remaining' =>
+            'remaining',
+
+        'purchase_date' =>
+            'Purchase Date',
+
+        'best_slot' =>
+            'Best Available Slot',
+
+        'farmers' =>
+            'farmers',
+
+        'km_away' =>
+            'km away',
+
+        'open' =>
+            'Slots Available',
+
+        'limited' =>
+            'Limited Availability',
+
+        'no_slots_status' =>
+            'No Slots Available',
+
+        'view_centre' =>
+            'View & Book',
+
+        'prototype_notice' =>
+            'Prototype Notice',
+
+        'prototype_text' =>
+            'This recommendation engine uses transparent rule-based logic for the KrishiSetu prototype. Production deployment can use authorised West Bengal e-Paddy data and real-time centre information.',
+
+        'no_centres' =>
+            'No active procurement centres are currently available.',
+
+        'back_dashboard' =>
+            'Back to Dashboard',
+
+        'location_unavailable' =>
+            'Location unavailable',
+
+        'low_queue' =>
+            'Low queue',
+
+        'moderate_queue' =>
+            'Moderate queue',
+
+        'high_queue' =>
+            'High queue'
+    ],
+
+
+    'hi' => [
+
+        'portal' =>
+            'किसान पोर्टल',
+
+        'dashboard' =>
+            '← डैशबोर्ड',
+
+        'title' =>
+            'स्मार्ट सुझाव',
+
+        'subtitle' =>
+            'कृषिसेतु कतार, स्लॉट की उपलब्धता, शेष क्षमता और खरीद कार्यक्रम के आधार पर सक्रिय खरीद केंद्रों की तुलना करता है।',
+
+        'recommended' =>
+            '⭐ आपके लिए सुझाया गया',
+
+        'centre_code' =>
+            'केंद्र कोड',
+
+        'queue_reason' =>
+            'किसान वर्तमान कतार में',
+
+        'slots_available' =>
+            'स्लॉट उपलब्ध',
+
+        'no_slots' =>
+            'कोई स्लॉट उपलब्ध नहीं',
+
+        'remaining_capacity' =>
+            'शेष क्षमता',
+
+        'recommendation_reason' =>
+            'यह केंद्र कृषिसेतु द्वारा उपयोग किए जाने वाले कारकों का सबसे अच्छा संयोजन प्रदान करता है।',
+
+        'recommended_slot' =>
+            'सुझाया गया स्लॉट',
+
+        'estimated_wait' =>
+            'अनुमानित प्रतीक्षा समय',
+
+        'minutes' =>
+            'मिनट',
+
+        'view_book' =>
+            'केंद्र देखें और बुक करें',
+
+        'score' =>
+            'सुझाव स्कोर',
+
+        'out_of' =>
+            '/ 100',
+
+        'queue' =>
+            'कतार',
+
+        'availability' =>
+            'स्लॉट उपलब्धता',
+
+        'capacity' =>
+            'शेष क्षमता',
+
+        'schedule' =>
+            'खरीद कार्यक्रम',
+
+        'how_decides' =>
+            'कृषिसेतु कैसे सुझाव देता है',
+
+        'how_decides_text' =>
+            'यह सुझाव नियम-आधारित है। दूरी केवल जानकारी के लिए दिखाई जाती है और दिखाई देने वाले सुझाव स्कोर में शामिल नहीं है।',
+
+        'queue_condition' =>
+            'कतार की स्थिति',
+
+        'other_options' =>
+            'अन्य विकल्प',
+
+        'other_options_text' =>
+            'आप किसी अन्य सक्रिय केंद्र को भी चुन सकते हैं।',
+
+        'distance' =>
+            'दूरी',
+
+        'current_queue' =>
+            'वर्तमान कतार',
+
+        'capacity_used' =>
+            'क्षमता',
+
+        'remaining' =>
+            'शेष',
+
+        'purchase_date' =>
+            'खरीद तारीख',
+
+        'best_slot' =>
+            'सबसे अच्छा उपलब्ध स्लॉट',
+
+        'farmers' =>
+            'किसान',
+
+        'km_away' =>
+            'किमी दूर',
+
+        'open' =>
+            'स्लॉट उपलब्ध',
+
+        'limited' =>
+            'सीमित उपलब्धता',
+
+        'no_slots_status' =>
+            'स्लॉट उपलब्ध नहीं',
+
+        'view_centre' =>
+            'केंद्र देखें और बुक करें',
+
+        'prototype_notice' =>
+            'प्रोटोटाइप सूचना',
+
+        'prototype_text' =>
+            'यह सुझाव प्रणाली कृषिसेतु प्रोटोटाइप के लिए पारदर्शी नियम-आधारित लॉजिक का उपयोग करती है। वास्तविक उपयोग में अधिकृत पश्चिम बंगाल ई-पैडी डेटा और वास्तविक समय केंद्र जानकारी का उपयोग किया जा सकता है।',
+
+        'no_centres' =>
+            'वर्तमान में कोई सक्रिय खरीद केंद्र उपलब्ध नहीं है।',
+
+        'back_dashboard' =>
+            'डैशबोर्ड पर वापस जाएँ',
+
+        'location_unavailable' =>
+            'स्थान उपलब्ध नहीं',
+
+        'low_queue' =>
+            'कम कतार',
+
+        'moderate_queue' =>
+            'मध्यम कतार',
+
+        'high_queue' =>
+            'अधिक कतार'
+    ],
+
+
+    'bn' => [
+
+        'portal' =>
+            'কৃষক পোর্টাল',
+
+        'dashboard' =>
+            '← ড্যাশবোর্ড',
+
+        'title' =>
+            'স্মার্ট সুপারিশ',
+
+        'subtitle' =>
+            'কৃষিসেতু সারি, স্লটের প্রাপ্যতা, অবশিষ্ট ক্ষমতা এবং ক্রয় সময়সূচির ভিত্তিতে সক্রিয় ক্রয় কেন্দ্রগুলির তুলনা করে।',
+
+        'recommended' =>
+            '⭐ আপনার জন্য সুপারিশ',
+
+        'centre_code' =>
+            'কেন্দ্র কোড',
+
+        'queue_reason' =>
+            'কৃষক বর্তমানে সারিতে',
+
+        'slots_available' =>
+            'স্লট উপলব্ধ',
+
+        'no_slots' =>
+            'কোনও স্লট উপলব্ধ নেই',
+
+        'remaining_capacity' =>
+            'অবশিষ্ট ক্ষমতা',
+
+        'recommendation_reason' =>
+            'এই কেন্দ্রটি কৃষিসেতুর ব্যবহৃত বিষয়গুলির সবচেয়ে ভালো সমন্বয় প্রদান করছে।',
+
+        'recommended_slot' =>
+            'সুপারিশকৃত স্লট',
+
+        'estimated_wait' =>
+            'আনুমানিক অপেক্ষার সময়',
+
+        'minutes' =>
+            'মিনিট',
+
+        'view_book' =>
+            'কেন্দ্র দেখুন ও বুক করুন',
+
+        'score' =>
+            'সুপারিশ স্কোর',
+
+        'out_of' =>
+            '/ 100',
+
+        'queue' =>
+            'সারি',
+
+        'availability' =>
+            'স্লটের প্রাপ্যতা',
+
+        'capacity' =>
+            'অবশিষ্ট ক্ষমতা',
+
+        'schedule' =>
+            'ক্রয় সময়সূচি',
+
+        'how_decides' =>
+            'কৃষিসেতু কীভাবে সুপারিশ করে',
+
+        'how_decides_text' =>
+            'এই সুপারিশ নিয়ম-ভিত্তিক। দূরত্ব শুধুমাত্র তথ্যের জন্য দেখানো হয় এবং দৃশ্যমান সুপারিশ স্কোরে অন্তর্ভুক্ত নয়।',
+
+        'queue_condition' =>
+            'সারির অবস্থা',
+
+        'other_options' =>
+            'অন্যান্য বিকল্প',
+
+        'other_options_text' =>
+            'আপনি অন্য কোনও সক্রিয় কেন্দ্রও বেছে নিতে পারেন।',
+
+        'distance' =>
+            'দূরত্ব',
+
+        'current_queue' =>
+            'বর্তমান সারি',
+
+        'capacity_used' =>
+            'ক্ষমতা',
+
+        'remaining' =>
+            'বাকি',
+
+        'purchase_date' =>
+            'ক্রয়ের তারিখ',
+
+        'best_slot' =>
+            'সেরা উপলব্ধ স্লট',
+
+        'farmers' =>
+            'কৃষক',
+
+        'km_away' =>
+            'কিমি দূরে',
+
+        'open' =>
+            'স্লট উপলব্ধ',
+
+        'limited' =>
+            'সীমিত প্রাপ্যতা',
+
+        'no_slots_status' =>
+            'স্লট উপলব্ধ নেই',
+
+        'view_centre' =>
+            'কেন্দ্র দেখুন ও বুক করুন',
+
+        'prototype_notice' =>
+            'প্রোটোটাইপ তথ্য',
+
+        'prototype_text' =>
+            'এই সুপারিশ ব্যবস্থা কৃষিসেতু প্রোটোটাইপের জন্য স্বচ্ছ নিয়ম-ভিত্তিক লজিক ব্যবহার করে। বাস্তব ব্যবহারে অনুমোদিত পশ্চিমবঙ্গ ই-প্যাডি ডেটা এবং রিয়েল-টাইম কেন্দ্রের তথ্য ব্যবহার করা যেতে পারে।',
+
+        'no_centres' =>
+            'বর্তমানে কোনও সক্রিয় ক্রয় কেন্দ্র উপলব্ধ নেই।',
+
+        'back_dashboard' =>
+            'ড্যাশবোর্ডে ফিরে যান',
+
+        'location_unavailable' =>
+            'অবস্থান পাওয়া যায়নি',
+
+        'low_queue' =>
+            'কম সারি',
+
+        'moderate_queue' =>
+            'মাঝারি সারি',
+
+        'high_queue' =>
+            'বেশি সারি'
+    ]
+];
+
+
+$currentLanguage =
+    $_SESSION['language'] ?? 'en';
+
+
+if (
+    !isset($pageText[$currentLanguage])
+) {
+    $currentLanguage = 'en';
+}
+
+
+function rt(string $key): string
+{
+    global $pageText, $currentLanguage;
+
+    return
+        $pageText[$currentLanguage][$key]
+        ??
+        $pageText['en'][$key]
+        ??
+        $key;
+}
+
+
+/* =========================================================
+   FARMER GPS
+========================================================= */
+
+$farmerLat =
+    isset($_GET['lat'])
+        ? (float)$_GET['lat']
+        : null;
+
+$farmerLng =
+    isset($_GET['lng'])
+        ? (float)$_GET['lng']
+        : null;
+
+
+/* =========================================================
+   GET ACTIVE CENTRES
+========================================================= */
+
+$result = $conn->query("
     SELECT
         id,
         centre_name,
@@ -48,686 +617,1774 @@ $sql = "
     FROM procurement_centres
     WHERE status = 'active'
     ORDER BY current_queue ASC
-";
+");
 
-$result = $conn->query($sql);
 
 $centres = [];
 
 
-/* -------------------------------------------------
-   Calculate recommendation score
-------------------------------------------------- */
+/* =========================================================
+   CALCULATE RECOMMENDATION
+
+   Visible score:
+   Queue             = 35
+   Slot availability = 35
+   Capacity          = 20
+   Purchase schedule = 10
+
+   TOTAL             = 100
+
+   Distance is NOT scored.
+   It is only displayed.
+========================================================= */
 
 foreach ($result as $centre) {
 
-    $queue = (int)$centre['current_queue'];
-    $capacity = (int)$centre['total_capacity'];
-    $bookings = (int)$centre['current_bookings'];
-
-    /*
-     * 1. Queue score
-     * Lower queue = better.
-     */
-    $queueScore = max(0, 30 - min($queue, 30));
+    $queue =
+        max(
+            0,
+            (int)$centre['current_queue']
+        );
 
 
-    /*
-     * 2. Slot availability
-     */
-    $slotScore = ((int)$centre['slot_available'] === 1)
-        ? 25
-        : 0;
+    $capacity =
+        max(
+            0,
+            (int)$centre['total_capacity']
+        );
 
 
-    /*
-     * 3. Remaining capacity
-     */
+    $bookings =
+        max(
+            0,
+            (int)$centre['current_bookings']
+        );
+
+
+    /* -----------------------------------------------------
+       1. QUEUE — 35 POINTS
+
+       0 queue = 35
+       35+ queue = 0
+    ----------------------------------------------------- */
+
+    $queueScore =
+        max(
+            0,
+            35 - min($queue, 35)
+        );
+
+
+    /* -----------------------------------------------------
+       2. SLOT AVAILABILITY — 35 POINTS
+
+       This uses the centre's existing slot_available flag.
+    ----------------------------------------------------- */
+
+    $slotScore =
+        ((int)$centre['slot_available'] === 1)
+            ? 35
+            : 0;
+
+
+    /* -----------------------------------------------------
+       3. REMAINING CAPACITY — 20 POINTS
+    ----------------------------------------------------- */
+
     if ($capacity > 0) {
 
+        $remainingCapacity =
+            max(
+                0,
+                $capacity - $bookings
+            );
+
         $remainingPercentage =
-            (($capacity - $bookings) / $capacity) * 100;
+            ($remainingCapacity / $capacity) * 100;
 
         $capacityScore =
             ($remainingPercentage / 100) * 20;
 
     } else {
 
+        $remainingCapacity = 0;
+
         $capacityScore = 0;
     }
 
 
-    /*
-     * 4. Distance
-     *
-     * Farmer coordinates are currently not stored,
-     * so prototype distance score uses a neutral value.
-     *
-     * Once GPS is available this section can use
-     * the actual Haversine distance.
-     */
-    $distanceScore = 7.5;
+    /* -----------------------------------------------------
+       4. PURCHASE SCHEDULE — 10 POINTS
+    ----------------------------------------------------- */
 
-
-    /*
-     * 5. Purchase date
-     *
-     * Earlier available purchase date gets a higher score.
-     */
     $purchaseScore = 0;
+
 
     if (!empty($centre['purchase_date'])) {
 
-        $purchaseDate = strtotime($centre['purchase_date']);
-        $todayDate = strtotime($today);
+        $purchaseTimestamp =
+            strtotime(
+                $centre['purchase_date']
+            );
 
-        $daysAway = floor(
-            ($purchaseDate - $todayDate) / 86400
-        );
+        $todayTimestamp =
+            strtotime(
+                date('Y-m-d')
+            );
+
+
+        $daysAway =
+            floor(
+                (
+                    $purchaseTimestamp
+                    -
+                    $todayTimestamp
+                )
+                /
+                86400
+            );
+
 
         if ($daysAway <= 0) {
+
             $purchaseScore = 10;
+
         } elseif ($daysAway === 1) {
+
             $purchaseScore = 9;
+
         } elseif ($daysAway === 2) {
+
             $purchaseScore = 8;
+
         } elseif ($daysAway === 3) {
+
             $purchaseScore = 7;
+
+        } elseif ($daysAway <= 7) {
+
+            $purchaseScore = 6;
+
         } else {
-            $purchaseScore = 5;
+
+            $purchaseScore = 4;
         }
     }
 
 
-    /*
-     * Final score
-     */
+    /* -----------------------------------------------------
+       FINAL VISIBLE SCORE
+    ----------------------------------------------------- */
+
     $totalScore =
-        $queueScore +
-        $slotScore +
-        $capacityScore +
-        $distanceScore +
+        $queueScore
+        +
+        $slotScore
+        +
+        $capacityScore
+        +
         $purchaseScore;
 
 
-    $centre['queue_score'] = $queueScore;
-    $centre['slot_score'] = $slotScore;
-    $centre['capacity_score'] = $capacityScore;
-    $centre['distance_score'] = $distanceScore;
-    $centre['purchase_score'] = $purchaseScore;
-    $centre['total_score'] = round($totalScore, 1);
+    $centre['queue_score'] =
+        round(
+            $queueScore,
+            1
+        );
 
 
-    $centres[] = $centre;
+    $centre['slot_score'] =
+        round(
+            $slotScore,
+            1
+        );
+
+
+    $centre['capacity_score'] =
+        round(
+            $capacityScore,
+            1
+        );
+
+
+    $centre['purchase_score'] =
+        round(
+            $purchaseScore,
+            1
+        );
+
+
+    $centre['total_score'] =
+        round(
+            $totalScore,
+            1
+        );
+
+
+    $centre['remaining_capacity'] =
+        $remainingCapacity;
+
+
+    /* -----------------------------------------------------
+       REAL DISTANCE — DISPLAY ONLY
+    ----------------------------------------------------- */
+
+    $centre['distance_km'] =
+        calculateDistance(
+            $farmerLat,
+            $farmerLng,
+            !empty($centre['latitude'])
+                ? (float)$centre['latitude']
+                : null,
+            !empty($centre['longitude'])
+                ? (float)$centre['longitude']
+                : null
+        );
+
+
+    /* -----------------------------------------------------
+       CAPACITY PERCENTAGE
+    ----------------------------------------------------- */
+
+    if ($capacity > 0) {
+
+        $centre['occupancy'] =
+            min(
+                100,
+                round(
+                    (
+                        $bookings
+                        /
+                        $capacity
+                    )
+                    *
+                    100
+                )
+            );
+
+    } else {
+
+        $centre['occupancy'] = 0;
+    }
+
+
+    /* -----------------------------------------------------
+       QUEUE LABEL
+    ----------------------------------------------------- */
+
+    if ($queue <= 10) {
+
+        $centre['queue_label'] =
+            rt('low_queue');
+
+        $centre['queue_class'] =
+            'good';
+
+    } elseif ($queue <= 25) {
+
+        $centre['queue_label'] =
+            rt('moderate_queue');
+
+        $centre['queue_class'] =
+            'medium';
+
+    } else {
+
+        $centre['queue_label'] =
+            rt('high_queue');
+
+        $centre['queue_class'] =
+            'high';
+    }
+
+
+    /* -----------------------------------------------------
+       AVAILABLE SLOTS
+
+       Use admin-managed slots as the actual source.
+    ----------------------------------------------------- */
+
+    $slotStmt =
+        $conn->prepare("
+            SELECT
+                COUNT(*) AS slot_count,
+                COALESCE(
+                    SUM(
+                        GREATEST(
+                            capacity - booked_count,
+                            0
+                        )
+                    ),
+                    0
+                ) AS remaining_slot_capacity
+            FROM slots
+            WHERE centre_id = ?
+              AND status = 'available'
+              AND slot_date >= CURDATE()
+              AND booked_count < capacity
+        ");
+
+
+    $centreId =
+        (int)$centre['id'];
+
+
+    $slotStmt->bind_param(
+        "i",
+        $centreId
+    );
+
+
+    $slotStmt->execute();
+
+
+    $slotData =
+        $slotStmt
+            ->get_result()
+            ->fetch_assoc();
+
+
+    $slotStmt->close();
+
+
+    $centre['available_slot_count'] =
+        (int)(
+            $slotData['slot_count']
+            ??
+            0
+        );
+
+
+    $centre['slot_remaining_capacity'] =
+        (int)(
+            $slotData['remaining_slot_capacity']
+            ??
+            0
+        );
+
+
+    $centres[] =
+        $centre;
 }
 
 
-/* -------------------------------------------------
-   Sort by recommendation score
-------------------------------------------------- */
+/* =========================================================
+   SORT BY VISIBLE RECOMMENDATION SCORE
+========================================================= */
 
-usort($centres, function ($a, $b) {
+usort(
+    $centres,
+    function ($a, $b) {
 
-    return $b['total_score'] <=> $a['total_score'];
+        if (
+            $a['total_score']
+            ==
+            $b['total_score']
+        ) {
 
-});
+            return
+                $a['current_queue']
+                <=>
+                $b['current_queue'];
+        }
 
+        return
+            $b['total_score']
+            <=>
+            $a['total_score'];
+    }
+);
+
+
+$recommended =
+    $centres[0] ?? null;
+
+
+/* =========================================================
+   GET BEST SLOT FOR EACH CENTRE
+========================================================= */
+
+foreach ($centres as &$centre) {
+
+    $centreId =
+        (int)$centre['id'];
+
+
+    $slotStmt =
+        $conn->prepare("
+            SELECT
+                id,
+                slot_date,
+                start_time,
+                end_time,
+                capacity,
+                booked_count
+            FROM slots
+            WHERE centre_id = ?
+              AND status = 'available'
+              AND booked_count < capacity
+              AND slot_date >= CURDATE()
+            ORDER BY
+                slot_date ASC,
+                start_time ASC
+            LIMIT 1
+        ");
+
+
+    $slotStmt->bind_param(
+        "i",
+        $centreId
+    );
+
+
+    $slotStmt->execute();
+
+
+    $slotResult =
+        $slotStmt->get_result();
+
+
+    $centre['best_slot'] =
+        $slotResult->fetch_assoc()
+        ?: null;
+
+
+    $slotStmt->close();
+}
+
+
+unset($centre);
+
+
+/* =========================================================
+   REFRESH RECOMMENDED CENTRE
+   The best_slot value was added above, so we must
+   refresh $recommended from the updated centres array.
+========================================================= */
 
 $recommended = $centres[0] ?? null;
 
 
-/* -------------------------------------------------
-   Helper
-------------------------------------------------- */
+/* =========================================================
+   ESTIMATED WAIT
+========================================================= */
 
-function e($value)
-{
-    return htmlspecialchars(
-        (string)$value,
-        ENT_QUOTES,
-        'UTF-8'
-    );
-}
+if ($recommended) {
+    $estimatedWaitMinutes =
+        (int)$recommended['current_queue']
+        *
+        5;
 
-function formatDate($date)
-{
-    if (empty($date)) {
-        return "Not available";
-    }
+} else {
 
-    return date("d M Y", strtotime($date));
+    $estimatedWaitMinutes = 0;
 }
 
 ?>
 
 <!DOCTYPE html>
-<html lang="en">
+
+<html
+    lang="<?= e($currentLanguage) ?>"
+>
 
 <head>
 
-    <meta charset="UTF-8">
+<meta charset="UTF-8">
 
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
 
-    <title>Smart Recommendation | KrishiSetu</title>
+<title>
+    <?= e(rt('title')) ?> | KrishiSetu
+</title>
 
-    <link
-        rel="stylesheet"
-        href="../assets/css/style.css"
-    >
+<link
+    rel="stylesheet"
+    href="../assets/css/style.css"
+>
 
-    <style>
 
-        body {
-            margin: 0;
-            background: #f7f9f7;
-            color: #17352a;
-            font-family: Arial, Helvetica, sans-serif;
-        }
+<style>
 
-        /* HEADER */
+/* =========================================================
+   BASE
+========================================================= */
 
-        .page-header {
-            background: #ffffff;
-            border-bottom: 1px solid #dfe7e2;
-        }
+* {
+    box-sizing: border-box;
+}
 
-        .header-inner {
-            max-width: 1180px;
-            margin: auto;
-            padding: 15px 20px;
 
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+body {
 
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 10px;
+    margin: 0;
 
-            text-decoration: none;
-            color: #087443;
+    background:
+        #f7f9f7;
 
-            font-size: 22px;
-            font-weight: 800;
-        }
+    color:
+        #17352a;
 
-        .brand-icon {
-            width: 38px;
-            height: 38px;
+    font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
+}
 
-            background: #e8f5ee;
 
-            border-radius: 10px;
+a {
+    text-decoration: none;
+}
 
-            display: flex;
-            align-items: center;
-            justify-content: center;
 
-            font-size: 20px;
-        }
+/* =========================================================
+   HEADER
+========================================================= */
 
-        .header-right {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
+.page-header {
 
-        .portal {
-            color: #61716a;
-            font-size: 14px;
-        }
+    background:
+        #ffffff;
 
-        .back-btn {
-            text-decoration: none;
+    border-bottom:
+        1px solid #dfe7e2;
 
-            color: #087443;
+    position:
+        sticky;
 
-            border: 1px solid #cfe0d6;
+    top:
+        0;
 
-            padding: 9px 15px;
+    z-index:
+        100;
+}
 
-            border-radius: 8px;
 
-            font-size: 14px;
+.header-inner {
 
-            font-weight: 600;
-        }
+    max-width:
+        1180px;
 
+    margin:
+        auto;
 
-        /* PAGE */
+    padding:
+        13px 20px;
 
-        .page {
-            max-width: 1180px;
-            margin: auto;
+    display:
+        flex;
 
-            padding: 35px 20px 60px;
-        }
+    justify-content:
+        space-between;
 
-        .page-title {
-            margin: 0 0 8px;
+    align-items:
+        center;
 
-            font-size: 32px;
-        }
+    gap:
+        20px;
+}
 
-        .page-subtitle {
-            color: #61716a;
 
-            line-height: 1.6;
+.brand {
 
-            margin-top: 0;
-        }
+    display:
+        flex;
 
+    align-items:
+        center;
 
-        /* RECOMMENDED CARD */
+    gap:
+        10px;
 
-        .recommended-card {
+    color:
+        #087443;
 
-            margin-top: 28px;
+    font-size:
+        22px;
 
-            background: #ffffff;
+    font-weight:
+        800;
+}
 
-            border: 2px solid #087443;
 
-            border-radius: 16px;
+.brand-icon {
 
-            padding: 25px;
+    width:
+        40px;
 
-            position: relative;
-        }
+    height:
+        40px;
 
-        .recommended-label {
+    border-radius:
+        11px;
 
-            display: inline-block;
+    background:
+        #e8f5ee;
 
-            background: #087443;
+    display:
+        grid;
 
-            color: white;
+    place-items:
+        center;
 
-            padding: 7px 12px;
+    font-size:
+        21px;
+}
 
-            border-radius: 7px;
 
-            font-size: 12px;
+.header-right {
 
-            font-weight: 700;
+    display:
+        flex;
 
-            margin-bottom: 14px;
-        }
+    align-items:
+        center;
 
-        .recommended-content {
+    gap:
+        14px;
+}
 
-            display: grid;
 
-            grid-template-columns: 1fr auto;
+.portal {
 
-            gap: 30px;
+    color:
+        #61716a;
 
-            align-items: center;
-        }
+    font-size:
+        14px;
+}
 
-        .recommended-name {
 
-            font-size: 25px;
+.back-btn {
 
-            margin: 0 0 7px;
-        }
+    color:
+        #087443;
 
-        .recommended-code {
+    border:
+        1px solid #cfe0d6;
 
-            color: #8a9892;
+    padding:
+        9px 14px;
 
-            font-size: 13px;
+    border-radius:
+        9px;
 
-            margin-bottom: 18px;
-        }
+    font-size:
+        14px;
 
-        .recommendation-reason {
+    font-weight:
+        700;
+}
 
-            color: #61716a;
 
-            line-height: 1.6;
+.back-btn:hover {
 
-            margin-bottom: 18px;
-        }
+    background:
+        #e8f5ee;
+}
 
-        .score-circle {
 
-            width: 105px;
-            height: 105px;
+/* =========================================================
+   PAGE
+========================================================= */
 
-            border-radius: 50%;
+.page {
 
-            background: #e8f5ee;
+    max-width:
+        1180px;
 
-            border: 7px solid #087443;
+    margin:
+        auto;
 
-            display: flex;
+    padding:
+        34px 20px 60px;
+}
 
-            flex-direction: column;
 
-            align-items: center;
+.page-title {
 
-            justify-content: center;
+    margin:
+        0 0 7px;
 
-            color: #087443;
-        }
+    font-size:
+        34px;
 
-        .score-number {
+    line-height:
+        1.2;
+}
 
-            font-size: 27px;
 
-            font-weight: 800;
-        }
+.page-subtitle {
 
-        .score-label {
+    max-width:
+        850px;
 
-            font-size: 11px;
+    margin:
+        0;
 
-            color: #61716a;
-        }
+    color:
+        #61716a;
 
-        .recommendation-button {
+    line-height:
+        1.6;
 
-            display: inline-block;
+    font-size:
+        15px;
+}
 
-            text-decoration: none;
 
-            background: #087443;
+/* =========================================================
+   RECOMMENDED CARD
+========================================================= */
 
-            color: white;
+.recommended-card {
 
-            padding: 12px 20px;
+    margin-top:
+        26px;
 
-            border-radius: 8px;
+    background:
+        #ffffff;
 
-            font-weight: 700;
+    border:
+        2px solid #087443;
 
-            font-size: 14px;
-        }
+    border-radius:
+        18px;
 
-        .recommendation-button:hover {
+    overflow:
+        hidden;
 
-            background: #055c35;
+    box-shadow:
+        0 8px 25px
+        rgba(8,116,67,.06);
+}
 
-        }
 
+.recommended-top {
 
-        /* REASONS */
+    padding:
+        24px;
 
-        .reason-grid {
+    display:
+        grid;
 
-            display: grid;
+    grid-template-columns:
+        minmax(0, 1fr) 125px;
 
-            grid-template-columns:
-                repeat(4, 1fr);
+    gap:
+        25px;
 
-            gap: 12px;
+    align-items:
+        center;
+}
 
-            margin-top: 22px;
-        }
 
-        .reason-box {
+.recommended-label {
 
-            background: #f7f9f7;
+    display:
+        inline-flex;
 
-            border-radius: 9px;
+    align-items:
+        center;
 
-            padding: 13px;
-        }
+    gap:
+        5px;
 
-        .reason-title {
+    background:
+        #087443;
 
-            color: #61716a;
+    color:
+        #ffffff;
 
-            font-size: 12px;
+    padding:
+        7px 11px;
 
-            margin-bottom: 5px;
-        }
+    border-radius:
+        8px;
 
-        .reason-value {
+    font-size:
+        12px;
 
-            font-size: 17px;
+    font-weight:
+        800;
 
-            font-weight: 700;
+    margin-bottom:
+        13px;
+}
 
-            color: #17352a;
-        }
 
+.recommended-name {
 
-        /* HOW SCORE WORKS */
+    margin:
+        0 0 5px;
 
-        .section-title {
+    font-size:
+        25px;
 
-            margin-top: 38px;
+    line-height:
+        1.3;
+}
 
-            margin-bottom: 15px;
 
-            font-size: 22px;
-        }
+.recommended-code {
 
-        .score-info {
+    color:
+        #8a9892;
 
-            background: #ffffff;
+    font-size:
+        13px;
 
-            border: 1px solid #dfe7e2;
+    margin-bottom:
+        15px;
+}
 
-            border-radius: 14px;
 
-            padding: 20px;
-        }
+.recommendation-reason {
 
-        .score-row {
+    margin:
+        0 0 13px;
 
-            display: flex;
+    color:
+        #61716a;
 
-            justify-content: space-between;
+    line-height:
+        1.55;
 
-            align-items: center;
+    font-size:
+        14px;
+}
 
-            padding: 11px 0;
 
-            border-bottom: 1px solid #edf1ee;
+.recommendation-reason strong {
 
-        }
+    color:
+        #17352a;
+}
 
-        .score-row:last-child {
 
-            border-bottom: none;
+.recommended-slot {
 
-        }
+    display:
+        inline-flex;
 
-        .score-factor {
+    align-items:
+        center;
 
-            font-weight: 600;
+    gap:
+        8px;
 
-        }
+    background:
+        #f1f8f4;
 
-        .score-weight {
+    border:
+        1px solid #d7eadf;
 
-            color: #087443;
+    border-radius:
+        9px;
 
-            font-weight: 700;
+    padding:
+        9px 11px;
 
-        }
+    color:
+        #087443;
 
+    font-size:
+        13px;
 
-        /* OTHER CENTRES */
+    margin-bottom:
+        9px;
+}
 
-        .centre-list {
 
-            display: grid;
+.waiting-time {
 
-            grid-template-columns:
-                repeat(2, 1fr);
+    color:
+        #61716a;
 
-            gap: 16px;
+    font-size:
+        13px;
 
-        }
+    margin-bottom:
+        15px;
+}
 
-        .centre-card {
 
-            background: #ffffff;
+.waiting-time strong {
 
-            border: 1px solid #dfe7e2;
+    color:
+        #17352a;
+}
 
-            border-radius: 14px;
 
-            padding: 20px;
-        }
+.recommendation-button {
 
-        .rank {
+    display:
+        inline-flex;
 
-            display: inline-block;
+    align-items:
+        center;
 
-            background: #f2b84b;
+    justify-content:
+        center;
 
-            color: #17352a;
+    background:
+        #087443;
 
-            font-weight: 800;
+    color:
+        #ffffff;
 
-            font-size: 12px;
+    padding:
+        11px 17px;
 
-            padding: 5px 8px;
+    border-radius:
+        9px;
 
-            border-radius: 5px;
+    font-size:
+        13px;
 
-            margin-bottom: 10px;
-        }
+    font-weight:
+        800;
+}
 
-        .centre-card h3 {
 
-            margin: 0 0 5px;
+.recommendation-button:hover {
 
-            font-size: 18px;
-        }
+    background:
+        #055c35;
+}
 
-        .centre-card-code {
 
-            color: #8a9892;
+/* =========================================================
+   SCORE CIRCLE
+========================================================= */
 
-            font-size: 12px;
+.score-circle {
 
-            margin-bottom: 14px;
-        }
+    width:
+        112px;
 
-        .mini-info {
+    height:
+        112px;
 
-            display: flex;
+    border-radius:
+        50%;
 
-            justify-content: space-between;
+    border:
+        7px solid #087443;
 
-            padding: 8px 0;
+    background:
+        #e8f5ee;
 
-            font-size: 13px;
+    display:
+        flex;
 
-            border-bottom: 1px solid #edf1ee;
-        }
+    flex-direction:
+        column;
 
-        .mini-info:last-child {
+    justify-content:
+        center;
 
-            border-bottom: none;
+    align-items:
+        center;
 
-        }
+    justify-self:
+        end;
+}
 
-        .mini-label {
 
-            color: #61716a;
+.score-number {
 
-        }
+    color:
+        #087443;
 
-        .mini-value {
+    font-size:
+        28px;
 
-            font-weight: 700;
+    font-weight:
+        900;
 
-        }
+    line-height:
+        1;
+}
 
 
-        /* PROTOTYPE NOTE */
+.score-small {
 
-        .prototype-note {
+    margin-top:
+        5px;
 
-            margin-top: 25px;
+    color:
+        #61716a;
 
-            background: #fff7e6;
+    font-size:
+        11px;
+}
 
-            border: 1px solid #f1d79e;
 
-            border-radius: 10px;
+/* =========================================================
+   SCORE BREAKDOWN
+========================================================= */
 
-            padding: 14px 17px;
+.score-breakdown {
 
-            color: #765614;
+    border-top:
+        1px solid #e3ece7;
 
-            font-size: 14px;
+    padding:
+        17px 24px;
 
-            line-height: 1.5;
-        }
+    display:
+        grid;
 
+    grid-template-columns:
+        repeat(4, 1fr);
 
-        /* MOBILE */
+    gap:
+        12px;
 
-        @media (max-width: 800px) {
+    background:
+        #fbfdfb;
+}
 
-            .recommended-content {
 
-                grid-template-columns: 1fr;
+.score-box {
 
-            }
+    background:
+        #ffffff;
 
-            .score-circle {
+    border:
+        1px solid #e2eae5;
 
-                margin-bottom: 5px;
-            }
+    border-radius:
+        10px;
 
-            .reason-grid {
+    padding:
+        12px 13px;
+}
 
-                grid-template-columns:
-                    repeat(2, 1fr);
-            }
 
-            .centre-list {
+.score-box-title {
 
-                grid-template-columns: 1fr;
-            }
+    color:
+        #61716a;
 
-        }
+    font-size:
+        11px;
 
-        @media (max-width: 550px) {
+    margin-bottom:
+        5px;
+}
 
-            .header-inner {
 
-                padding: 12px 15px;
-            }
+.score-box-value {
 
-            .portal {
+    color:
+        #087443;
 
-                display: none;
-            }
+    font-size:
+        17px;
 
-            .page {
+    font-weight:
+        800;
+}
 
-                padding: 25px 15px 45px;
-            }
 
-            .page-title {
+.score-box-limit {
 
-                font-size: 26px;
-            }
+    color:
+        #8a9892;
 
-            .reason-grid {
+    font-size:
+        11px;
+}
 
-                grid-template-columns: 1fr;
-            }
 
-        }
+/* =========================================================
+   HOW DECIDES
+========================================================= */
 
-    </style>
+.section-title {
+
+    margin:
+        34px 0 7px;
+
+    font-size:
+        22px;
+}
+
+
+.section-description {
+
+    margin:
+        0 0 15px;
+
+    color:
+        #61716a;
+
+    font-size:
+        13px;
+
+    line-height:
+        1.5;
+}
+
+
+.score-info {
+
+    background:
+        #ffffff;
+
+    border:
+        1px solid #dfe7e2;
+
+    border-radius:
+        15px;
+
+    padding:
+        7px 20px;
+}
+
+
+.score-row {
+
+    min-height:
+        52px;
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    justify-content:
+        space-between;
+
+    gap:
+        15px;
+
+    border-bottom:
+        1px solid #edf1ee;
+}
+
+
+.score-row:last-child {
+
+    border-bottom:
+        0;
+}
+
+
+.score-factor {
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    gap:
+        10px;
+
+    font-size:
+        14px;
+
+    font-weight:
+        700;
+}
+
+
+.factor-dot {
+
+    width:
+        8px;
+
+    height:
+        8px;
+
+    border-radius:
+        50%;
+
+    background:
+        #087443;
+}
+
+
+.score-weight {
+
+    color:
+        #087443;
+
+    font-weight:
+        800;
+}
+
+
+/* =========================================================
+   OTHER OPTIONS HEADER
+========================================================= */
+
+.options-header {
+
+    display:
+        flex;
+
+    justify-content:
+        space-between;
+
+    align-items:
+        end;
+
+    gap:
+        15px;
+
+    margin-top:
+        34px;
+
+    margin-bottom:
+        15px;
+}
+
+
+.options-header .section-title {
+
+    margin:
+        0;
+}
+
+
+.options-count {
+
+    color:
+        #8a9892;
+
+    font-size:
+        12px;
+}
+
+
+/* =========================================================
+   OTHER CENTRES
+========================================================= */
+
+.centre-list {
+
+    display:
+        grid;
+
+    grid-template-columns:
+        repeat(2, 1fr);
+
+    gap:
+        17px;
+}
+
+
+.centre-card {
+
+    background:
+        #ffffff;
+
+    border:
+        1px solid #dfe7e2;
+
+    border-radius:
+        15px;
+
+    padding:
+        18px;
+
+    transition:
+        box-shadow .15s ease,
+        border-color .15s ease;
+}
+
+
+.centre-card:hover {
+
+    border-color:
+        #bdd5c6;
+
+    box-shadow:
+        0 7px 20px
+        rgba(20,70,45,.06);
+}
+
+
+.rank {
+
+    display:
+        inline-block;
+
+    background:
+        #fff1cd;
+
+    color:
+        #795600;
+
+    padding:
+        5px 8px;
+
+    border-radius:
+        6px;
+
+    font-size:
+        11px;
+
+    font-weight:
+        800;
+
+    margin-bottom:
+        10px;
+}
+
+
+.centre-card h3 {
+
+    margin:
+        0 0 4px;
+
+    font-size:
+        18px;
+
+    line-height:
+        1.3;
+}
+
+
+.centre-card-code {
+
+    color:
+        #8a9892;
+
+    font-size:
+        12px;
+
+    margin-bottom:
+        13px;
+}
+
+
+.mini-info {
+
+    min-height:
+        39px;
+
+    display:
+        flex;
+
+    justify-content:
+        space-between;
+
+    align-items:
+        center;
+
+    gap:
+        12px;
+
+    border-bottom:
+        1px solid #edf1ee;
+
+    font-size:
+        12px;
+}
+
+
+.mini-info:last-of-type {
+
+    border-bottom:
+        0;
+}
+
+
+.mini-label {
+
+    color:
+        #61716a;
+}
+
+
+.mini-value {
+
+    color:
+        #17352a;
+
+    font-weight:
+        800;
+
+    text-align:
+        right;
+}
+
+
+.distance-value {
+
+    color:
+        #087443;
+}
+
+
+.card-action {
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    justify-content:
+        space-between;
+
+    gap:
+        12px;
+
+    margin-top:
+        14px;
+}
+
+
+.status-pill {
+
+    display:
+        inline-block;
+
+    padding:
+        5px 8px;
+
+    border-radius:
+        6px;
+
+    font-size:
+        10px;
+
+    font-weight:
+        800;
+}
+
+
+.status-open {
+
+    color:
+        #087443;
+
+    background:
+        #e8f5ee;
+}
+
+
+.status-limited {
+
+    color:
+        #8b6200;
+
+    background:
+        #fff7e6;
+}
+
+
+.status-none {
+
+    color:
+        #a52d2d;
+
+    background:
+        #fdecec;
+}
+
+
+.small-book-btn {
+
+    display:
+        inline-flex;
+
+    align-items:
+        center;
+
+    gap:
+        5px;
+
+    background:
+        #087443;
+
+    color:
+        #ffffff;
+
+    padding:
+        9px 12px;
+
+    border-radius:
+        8px;
+
+    font-size:
+        11px;
+
+    font-weight:
+        800;
+}
+
+
+.small-disabled {
+
+    background:
+        #f0f2f1;
+
+    color:
+        #7d8882;
+
+    cursor:
+        default;
+}
+
+
+/* =========================================================
+   PROTOTYPE NOTICE
+========================================================= */
+
+.prototype-note {
+
+    margin-top:
+        28px;
+
+    padding:
+        14px 17px;
+
+    background:
+        #fff7e6;
+
+    border:
+        1px solid #efd89f;
+
+    border-radius:
+        11px;
+
+    color:
+        #74591f;
+
+    font-size:
+        12px;
+
+    line-height:
+        1.55;
+}
+
+
+.prototype-note strong {
+
+    color:
+        #624700;
+}
+
+
+/* =========================================================
+   EMPTY
+========================================================= */
+
+.empty-card {
+
+    margin-top:
+        25px;
+
+    background:
+        #ffffff;
+
+    border:
+        1px solid #dfe7e2;
+
+    border-radius:
+        16px;
+
+    padding:
+        45px 25px;
+
+    text-align:
+        center;
+}
+
+
+.empty-icon {
+
+    font-size:
+        32px;
+
+    margin-bottom:
+        10px;
+}
+
+
+.empty-card h2 {
+
+    margin:
+        0 0 7px;
+}
+
+
+.empty-card p {
+
+    color:
+        #61716a;
+
+    margin:
+        0 0 17px;
+}
+
+
+.empty-button {
+
+    display:
+        inline-block;
+
+    background:
+        #087443;
+
+    color:
+        #ffffff;
+
+    padding:
+        10px 15px;
+
+    border-radius:
+        8px;
+
+    font-size:
+        13px;
+
+    font-weight:
+        800;
+}
+
+
+/* =========================================================
+   MOBILE
+========================================================= */
+
+@media (max-width: 850px) {
+
+    .recommended-top {
+
+        grid-template-columns:
+            1fr;
+    }
+
+
+    .score-circle {
+
+        justify-self:
+            start;
+    }
+
+
+    .score-breakdown {
+
+        grid-template-columns:
+            repeat(2, 1fr);
+    }
+
+
+    .centre-list {
+
+        grid-template-columns:
+            1fr;
+    }
+}
+
+
+@media (max-width: 600px) {
+
+    .header-inner {
+
+        padding:
+            11px 15px;
+    }
+
+
+    .portal {
+
+        display:
+            none;
+    }
+
+
+    .page {
+
+        padding:
+            25px 15px 45px;
+    }
+
+
+    .page-title {
+
+        font-size:
+            28px;
+    }
+
+
+    .recommended-top {
+
+        padding:
+            19px;
+    }
+
+
+    .score-breakdown {
+
+        padding:
+            15px;
+
+        grid-template-columns:
+            1fr 1fr;
+    }
+
+
+    .recommended-name {
+
+        font-size:
+            21px;
+    }
+
+
+    .options-header {
+
+        align-items:
+            flex-start;
+
+        flex-direction:
+            column;
+
+        gap:
+            4px;
+    }
+}
+
+
+@media (max-width: 430px) {
+
+    .score-breakdown {
+
+        grid-template-columns:
+            1fr;
+    }
+
+
+    .card-action {
+
+        align-items:
+            stretch;
+
+        flex-direction:
+            column;
+    }
+
+
+    .small-book-btn {
+
+        justify-content:
+            center;
+    }
+}
+
+</style>
 
 </head>
 
@@ -735,31 +2392,43 @@ function formatDate($date)
 <body>
 
 
+<!-- =====================================================
+     HEADER
+====================================================== -->
+
 <header class="page-header">
 
     <div class="header-inner">
 
-        <a href="dashboard.php" class="brand">
 
-            <div class="brand-icon">
+        <a
+            href="dashboard.php"
+            class="brand"
+        >
+
+            <span class="brand-icon">
                 🌾
-            </div>
+            </span>
 
-            <span>KrishiSetu</span>
+            <span>
+                KrishiSetu
+            </span>
 
         </a>
+
 
         <div class="header-right">
 
             <span class="portal">
-                Farmer Portal
+                <?= e(rt('portal')) ?>
             </span>
+
 
             <a
                 href="dashboard.php"
                 class="back-btn"
             >
-                ← Dashboard
+                <?= e(rt('dashboard')) ?>
             </a>
 
         </div>
@@ -769,386 +2438,1069 @@ function formatDate($date)
 </header>
 
 
+
 <main class="page">
 
 
-    <h1 class="page-title">
-        Smart Recommendation
-    </h1>
-
-    <p class="page-subtitle">
-        KrishiSetu compares active procurement centres
-        and recommends the option that best balances
-        queue, availability, capacity and schedule.
-    </p>
+<?php if ($recommended): ?>
 
 
-    <?php if ($recommended): ?>
+<!-- =====================================================
+     PAGE INTRO
+====================================================== -->
+
+<h1 class="page-title">
+
+    <?= e(rt('title')) ?>
+
+</h1>
 
 
-        <!-- RECOMMENDED CENTRE -->
+<p class="page-subtitle">
 
-        <section class="recommended-card">
+    <?= e(rt('subtitle')) ?>
+
+</p>
+
+
+
+<!-- =====================================================
+     RECOMMENDED CENTRE
+====================================================== -->
+
+<section class="recommended-card">
+
+
+    <div class="recommended-top">
+
+
+        <div>
+
 
             <span class="recommended-label">
-                ⭐ Recommended for You
+
+                <?= e(rt('recommended')) ?>
+
             </span>
 
 
-            <div class="recommended-content">
+            <h2 class="recommended-name">
 
-                <div>
+                <?= e(
+                    $recommended['centre_name']
+                ) ?>
 
-                    <h2 class="recommended-name">
-
-                        <?= e($recommended['centre_name']) ?>
-
-                    </h2>
-
-                    <div class="recommended-code">
-
-                        Centre Code:
-                        <?= e($recommended['centre_code']) ?>
-
-                    </div>
+            </h2>
 
 
-                    <p class="recommendation-reason">
+            <div class="recommended-code">
 
-                        This centre currently has a
-                        <strong>
-                            <?= (int)$recommended['current_queue'] ?>
-                            farmer queue
-                        </strong>,
-                        has
-                        <strong>
-                            <?= (int)$recommended['slot_available'] === 1
-                                ? 'slots available'
-                                : 'no available slots'
-                            ?>
-                        </strong>,
-                        and has
-                        <strong>
-                            <?= max(
-                                0,
-                                (int)$recommended['total_capacity']
-                                - (int)$recommended['current_bookings']
-                            ) ?>
-                            remaining capacity
-                        </strong>.
-                        Based on these factors, it currently
-                        receives the highest KrishiSetu score.
-                    </p>
+                <?= e(rt('centre_code')) ?>:
 
-
-                    <a
-                        href="booking.php?centre_id=<?= (int)$recommended['id'] ?>"
-                        class="recommendation-button"
-                    >
-                        View & Book This Centre →
-                    </a>
-
-                </div>
-
-
-                <div class="score-circle">
-
-                    <span class="score-number">
-                        <?= e($recommended['total_score']) ?>
-                    </span>
-
-                    <span class="score-label">
-                        / 100 Score
-                    </span>
-
-                </div>
+                <?= e(
+                    $recommended['centre_code']
+                ) ?>
 
             </div>
 
 
-            <!-- SCORE BREAKDOWN -->
+            <p class="recommendation-reason">
 
-            <div class="reason-grid">
+                <strong>
+                    <?= (int)$recommended['current_queue'] ?>
+                </strong>
 
-                <div class="reason-box">
+                <?= e(rt('queue_reason')) ?>,
 
-                    <div class="reason-title">
-                        Queue
-                    </div>
+                <strong>
 
-                    <div class="reason-value">
-                        <?= e($recommended['queue_score']) ?>/30
-                    </div>
+                    <?php if (
+                        $recommended['available_slot_count'] > 0
+                    ): ?>
 
-                </div>
+                        <?= (int)$recommended[
+                            'available_slot_count'
+                        ] ?>
 
+                        <?= e(
+                            rt('slots_available')
+                        ) ?>
 
-                <div class="reason-box">
+                    <?php else: ?>
 
-                    <div class="reason-title">
-                        Availability
-                    </div>
+                        <?= e(
+                            rt('no_slots')
+                        ) ?>
 
-                    <div class="reason-value">
-                        <?= e($recommended['slot_score']) ?>/25
-                    </div>
+                    <?php endif; ?>
 
-                </div>
+                </strong>,
 
+                <strong>
 
-                <div class="reason-box">
+                    <?= (int)$recommended[
+                        'remaining_capacity'
+                    ] ?>
 
-                    <div class="reason-title">
-                        Capacity
-                    </div>
+                </strong>
 
-                    <div class="reason-value">
-                        <?= number_format(
-                            $recommended['capacity_score'],
-                            1
-                        ) ?>/20
-                    </div>
+                <?= e(
+                    rt('remaining_capacity')
+                ) ?>.
 
-                </div>
-
-
-                <div class="reason-box">
-
-                    <div class="reason-title">
-                        Schedule
-                    </div>
-
-                    <div class="reason-value">
-                        <?= e($recommended['purchase_score']) ?>/10
-                    </div>
-
-                </div>
-
-            </div>
-
-        </section>
+            </p>
 
 
-        <!-- SCORE EXPLANATION -->
-
-        <h2 class="section-title">
-            How KrishiSetu decides
-        </h2>
+            <div class="recommended-slot">
 
 
-        <section class="score-info">
-
-            <div class="score-row">
-
-                <span class="score-factor">
-                    Queue condition
+                <span>
+                    📅
                 </span>
 
-                <span class="score-weight">
-                    30%
+
+                <span>
+
+                    <strong>
+                        <?= e(
+                            rt('recommended_slot')
+                        ) ?>:
+                    </strong>
+
+
+                    <?php if (
+                        $recommended['best_slot']
+                    ): ?>
+
+                        <?= e(
+                            formatDateValue(
+                                $recommended[
+                                    'best_slot'
+                                ]['slot_date']
+                            )
+                        ) ?>
+
+                        ·
+
+                        <?= e(
+                            formatTimeValue(
+                                $recommended[
+                                    'best_slot'
+                                ]['start_time']
+                            )
+                        ) ?>
+
+                        -
+
+                        <?= e(
+                            formatTimeValue(
+                                $recommended[
+                                    'best_slot'
+                                ]['end_time']
+                            )
+                        ) ?>
+
+                    <?php else: ?>
+
+                        <?= e(
+                            rt('no_slots')
+                        ) ?>
+
+                    <?php endif; ?>
+
                 </span>
 
             </div>
 
 
-            <div class="score-row">
+            <div class="waiting-time">
 
-                <span class="score-factor">
-                    Slot availability
-                </span>
+                🕐
 
-                <span class="score-weight">
-                    25%
-                </span>
+                <?= e(
+                    rt('estimated_wait')
+                ) ?>:
 
-            </div>
-
-
-            <div class="score-row">
-
-                <span class="score-factor">
-                    Remaining capacity
-                </span>
-
-                <span class="score-weight">
-                    20%
-                </span>
+                <strong>
+                    ~<?= $estimatedWaitMinutes ?>
+                    <?= e(rt('minutes')) ?>
+                </strong>
 
             </div>
 
 
-            <div class="score-row">
+            <a
+                href="
+                    booking.php?centre_id=
+                    <?= (int)$recommended['id'] ?>
+                    <?=
+                        $recommended['best_slot']
+                        ? '&slot_id=' .
+                          (int)$recommended[
+                              'best_slot'
+                          ]['id']
+                        : ''
+                    ?>
+                "
+                class="recommendation-button"
+            >
 
-                <span class="score-factor">
-                    Distance
-                </span>
+                <?= e(rt('view_book')) ?>
 
-                <span class="score-weight">
-                    15%
-                </span>
+                →
 
-            </div>
+            </a>
 
-
-            <div class="score-row">
-
-                <span class="score-factor">
-                    Purchase schedule
-                </span>
-
-                <span class="score-weight">
-                    10%
-                </span>
-
-            </div>
-
-        </section>
-
-
-        <!-- OTHER CENTRES -->
-
-        <h2 class="section-title">
-            Other Options
-        </h2>
-
-
-        <div class="centre-list">
-
-            <?php
-
-            $rank = 1;
-
-            foreach ($centres as $centre):
-
-                if ($centre['id'] == $recommended['id']) {
-                    continue;
-                }
-
-                $rank++;
-
-            ?>
-
-                <article class="centre-card">
-
-                    <span class="rank">
-                        #<?= $rank ?> Recommended
-                    </span>
-
-
-                    <h3>
-                        <?= e($centre['centre_name']) ?>
-                    </h3>
-
-
-                    <div class="centre-card-code">
-
-                        <?= e($centre['centre_code']) ?>
-
-                    </div>
-
-
-                    <div class="mini-info">
-
-                        <span class="mini-label">
-                            Recommendation Score
-                        </span>
-
-                        <span class="mini-value">
-                            <?= e($centre['total_score']) ?>/100
-                        </span>
-
-                    </div>
-
-
-                    <div class="mini-info">
-
-                        <span class="mini-label">
-                            Current Queue
-                        </span>
-
-                        <span class="mini-value">
-                            <?= (int)$centre['current_queue'] ?>
-                            farmers
-                        </span>
-
-                    </div>
-
-
-                    <div class="mini-info">
-
-                        <span class="mini-label">
-                            Capacity
-                        </span>
-
-                        <span class="mini-value">
-
-                            <?= (int)$centre['current_bookings'] ?>
-                            /
-                            <?= (int)$centre['total_capacity'] ?>
-
-                        </span>
-
-                    </div>
-
-
-                    <div class="mini-info">
-
-                        <span class="mini-label">
-                            Purchase Date
-                        </span>
-
-                        <span class="mini-value">
-
-                            <?= e(
-                                formatDate(
-                                    $centre['purchase_date']
-                                )
-                            ) ?>
-
-                        </span>
-
-                    </div>
-
-                </article>
-
-            <?php endforeach; ?>
 
         </div>
 
 
-    <?php else: ?>
+
+        <!-- SCORE -->
+
+        <div class="score-circle">
+
+            <span class="score-number">
+
+                <?= e(
+                    $recommended['total_score']
+                ) ?>
+
+            </span>
 
 
-        <section class="recommended-card">
+            <span class="score-small">
 
-            <h2>
-                No active procurement centres
-            </h2>
+                <?= e(rt('out_of')) ?>
 
-            <p>
-                There are currently no active centres
-                available for recommendation.
-            </p>
+            </span>
 
-        </section>
+        </div>
 
-
-    <?php endif; ?>
-
-
-    <div class="prototype-note">
-
-        <strong>Prototype Notice:</strong>
-        This recommendation engine uses transparent
-        rule-based scoring for the hackathon prototype.
-        Production deployment can use authorised
-        West Bengal e-Paddy data feeds and real farmer
-        location data.
 
     </div>
 
 
+
+    <!-- =================================================
+         SCORE BREAKDOWN
+    ================================================== -->
+
+    <div class="score-breakdown">
+
+
+        <div class="score-box">
+
+            <div class="score-box-title">
+
+                <?= e(
+                    rt('queue')
+                ) ?>
+
+            </div>
+
+            <div class="score-box-value">
+
+                <?= e(
+                    $recommended['queue_score']
+                ) ?>
+
+                <span class="score-box-limit">
+                    / 35
+                </span>
+
+            </div>
+
+        </div>
+
+
+
+        <div class="score-box">
+
+            <div class="score-box-title">
+
+                <?= e(
+                    rt('availability')
+                ) ?>
+
+            </div>
+
+            <div class="score-box-value">
+
+                <?= e(
+                    $recommended['slot_score']
+                ) ?>
+
+                <span class="score-box-limit">
+                    / 35
+                </span>
+
+            </div>
+
+        </div>
+
+
+
+        <div class="score-box">
+
+            <div class="score-box-title">
+
+                <?= e(
+                    rt('capacity')
+                ) ?>
+
+            </div>
+
+            <div class="score-box-value">
+
+                <?= e(
+                    $recommended['capacity_score']
+                ) ?>
+
+                <span class="score-box-limit">
+                    / 20
+                </span>
+
+            </div>
+
+        </div>
+
+
+
+        <div class="score-box">
+
+            <div class="score-box-title">
+
+                <?= e(
+                    rt('schedule')
+                ) ?>
+
+            </div>
+
+            <div class="score-box-value">
+
+                <?= e(
+                    $recommended['purchase_score']
+                ) ?>
+
+                <span class="score-box-limit">
+                    / 10
+                </span>
+
+            </div>
+
+        </div>
+
+
+    </div>
+
+
+</section>
+
+
+
+<!-- =====================================================
+     HOW KRISHISETU DECIDES
+====================================================== -->
+
+<h2 class="section-title">
+
+    <?= e(
+        rt('how_decides')
+    ) ?>
+
+</h2>
+
+
+<p class="section-description">
+
+    <?= e(
+        rt('how_decides_text')
+    ) ?>
+
+</p>
+
+
+<section class="score-info">
+
+
+    <div class="score-row">
+
+        <span class="score-factor">
+
+            <span class="factor-dot"></span>
+
+            <?= e(
+                rt('queue_condition')
+            ) ?>
+
+        </span>
+
+
+        <span class="score-weight">
+            35%
+        </span>
+
+    </div>
+
+
+
+    <div class="score-row">
+
+        <span class="score-factor">
+
+            <span class="factor-dot"></span>
+
+            <?= e(
+                rt('availability')
+            ) ?>
+
+        </span>
+
+
+        <span class="score-weight">
+            35%
+        </span>
+
+    </div>
+
+
+
+    <div class="score-row">
+
+        <span class="score-factor">
+
+            <span class="factor-dot"></span>
+
+            <?= e(
+                rt('capacity')
+            ) ?>
+
+        </span>
+
+
+        <span class="score-weight">
+            20%
+        </span>
+
+    </div>
+
+
+
+    <div class="score-row">
+
+        <span class="score-factor">
+
+            <span class="factor-dot"></span>
+
+            <?= e(
+                rt('schedule')
+            ) ?>
+
+        </span>
+
+
+        <span class="score-weight">
+            10%
+        </span>
+
+    </div>
+
+
+</section>
+
+
+
+<!-- =====================================================
+     OTHER OPTIONS
+====================================================== -->
+
+<div class="options-header">
+
+
+    <div>
+
+        <h2 class="section-title">
+
+            <?= e(
+                rt('other_options')
+            ) ?>
+
+        </h2>
+
+
+        <p
+            class="section-description"
+            style="margin-bottom:0;"
+        >
+
+            <?= e(
+                rt('other_options_text')
+            ) ?>
+
+        </p>
+
+    </div>
+
+
+    <span class="options-count">
+
+        <?= max(
+            0,
+            count($centres) - 1
+        ) ?>
+
+        other centre(s)
+
+    </span>
+
+
+</div>
+
+
+
+<div class="centre-list">
+
+
+<?php
+
+$rank = 1;
+
+foreach ($centres as $centre):
+
+    if (
+        (int)$centre['id']
+        ===
+        (int)$recommended['id']
+    ) {
+        continue;
+    }
+
+    $rank++;
+
+
+    if (
+        $centre['available_slot_count'] > 0
+    ) {
+
+        $statusClass =
+            $centre['slot_remaining_capacity'] < 10
+                ? 'status-limited'
+                : 'status-open';
+
+        $statusText =
+            $centre['slot_remaining_capacity'] < 10
+                ? rt('limited')
+                : rt('open');
+
+    } else {
+
+        $statusClass =
+            'status-none';
+
+        $statusText =
+            rt('no_slots_status');
+    }
+
+?>
+
+
+<article class="centre-card">
+
+
+    <span class="rank">
+
+        #<?= $rank ?>
+
+        &nbsp;
+
+        <?= e(
+            rt('recommended')
+        ) ?>
+
+    </span>
+
+
+    <h3>
+
+        <?= e(
+            $centre['centre_name']
+        ) ?>
+
+    </h3>
+
+
+    <div class="centre-card-code">
+
+        <?= e(
+            $centre['centre_code']
+        ) ?>
+
+    </div>
+
+
+
+    <!-- SCORE -->
+
+    <div class="mini-info">
+
+        <span class="mini-label">
+
+            <?= e(
+                rt('score')
+            ) ?>
+
+        </span>
+
+
+        <span class="mini-value">
+
+            <?= e(
+                $centre['total_score']
+            ) ?>/100
+
+        </span>
+
+    </div>
+
+
+
+    <!-- DISTANCE -->
+
+    <div class="mini-info">
+
+        <span class="mini-label">
+
+            <?= e(
+                rt('distance')
+            ) ?>
+
+        </span>
+
+
+        <span
+            class="
+                mini-value
+                distance-value
+            "
+        >
+
+            <?php if (
+                $centre['distance_km'] !== null
+            ): ?>
+
+                <?= number_format(
+                    $centre['distance_km'],
+                    1
+                ) ?>
+
+                <?= e(
+                    rt('km_away')
+                ) ?>
+
+            <?php else: ?>
+
+                <?= e(
+                    rt(
+                        'location_unavailable'
+                    )
+                ) ?>
+
+            <?php endif; ?>
+
+        </span>
+
+    </div>
+
+
+
+    <!-- QUEUE -->
+
+    <div class="mini-info">
+
+        <span class="mini-label">
+
+            <?= e(
+                rt('current_queue')
+            ) ?>
+
+        </span>
+
+
+        <span class="mini-value">
+
+            <?= (int)$centre[
+                'current_queue'
+            ] ?>
+
+            <?= e(
+                rt('farmers')
+            ) ?>
+
+        </span>
+
+    </div>
+
+
+
+    <!-- WAIT -->
+
+    <div class="mini-info">
+
+        <span class="mini-label">
+
+            <?= e(
+                rt('estimated_wait')
+            ) ?>
+
+        </span>
+
+
+        <span class="mini-value">
+
+            ~<?= (int)$centre[
+                'current_queue'
+            ] * 5 ?>
+
+            <?= e(
+                rt('minutes')
+            ) ?>
+
+        </span>
+
+    </div>
+
+
+
+    <!-- CAPACITY -->
+
+    <div class="mini-info">
+
+        <span class="mini-label">
+
+            <?= e(
+                rt('capacity_used')
+            ) ?>
+
+        </span>
+
+
+        <span class="mini-value">
+
+            <?= (int)$centre[
+                'current_bookings'
+            ] ?>
+
+            /
+
+            <?= (int)$centre[
+                'total_capacity'
+            ] ?>
+
+            ·
+
+            <?= (int)$centre[
+                'remaining_capacity'
+            ] ?>
+
+            <?= e(
+                rt('remaining')
+            ) ?>
+
+        </span>
+
+    </div>
+
+
+
+    <!-- DISTANCE / PURCHASE -->
+
+    <div class="mini-info">
+
+        <span class="mini-label">
+
+            <?= e(
+                rt('purchase_date')
+            ) ?>
+
+        </span>
+
+
+        <span class="mini-value">
+
+            <?= e(
+                formatDateValue(
+                    $centre[
+                        'purchase_date'
+                    ]
+                )
+            ) ?>
+
+        </span>
+
+    </div>
+
+
+
+    <!-- ACTION -->
+
+    <div class="card-action">
+
+
+        <span
+            class="
+                status-pill
+                <?= e(
+                    $statusClass
+                ) ?>
+            "
+        >
+
+            <?= e(
+                $statusText
+            ) ?>
+
+        </span>
+
+
+        <?php if (
+            $centre['available_slot_count']
+            >
+            0
+        ): ?>
+
+
+            <a
+                href="
+                    booking.php?centre_id=
+                    <?= (int)$centre['id'] ?>
+                    <?=
+                        $centre['best_slot']
+                        ? '&slot_id=' .
+                          (int)$centre[
+                              'best_slot'
+                          ]['id']
+                        : ''
+                    ?>
+                "
+                class="small-book-btn"
+            >
+
+                <?= e(
+                    rt('view_centre')
+                ) ?>
+
+                →
+
+            </a>
+
+
+        <?php else: ?>
+
+
+            <span
+                class="
+                    small-book-btn
+                    small-disabled
+                "
+            >
+
+                <?= e(
+                    rt('no_slots_status')
+                ) ?>
+
+            </span>
+
+
+        <?php endif; ?>
+
+
+    </div>
+
+
+</article>
+
+
+<?php endforeach; ?>
+
+
+</div>
+
+
+
+<!-- =====================================================
+     PROTOTYPE NOTICE
+====================================================== -->
+
+<div class="prototype-note">
+
+    <strong>
+
+        <?= e(
+            rt('prototype_notice')
+        ) ?>:
+
+    </strong>
+
+    <?= e(
+        rt('prototype_text')
+    ) ?>
+
+</div>
+
+
+
+<?php else: ?>
+
+
+<!-- =====================================================
+     NO CENTRES
+====================================================== -->
+
+<section class="empty-card">
+
+
+    <div class="empty-icon">
+        🌾
+    </div>
+
+
+    <h2>
+
+        <?= e(
+            rt('no_centres')
+        ) ?>
+
+    </h2>
+
+
+    <p>
+
+        <?= e(
+            rt('no_centres')
+        ) ?>
+
+    </p>
+
+
+    <a
+        href="dashboard.php"
+        class="empty-button"
+    >
+
+        <?= e(
+            rt('back_dashboard')
+        ) ?>
+
+    </a>
+
+
+</section>
+
+
+<?php endif; ?>
+
+
 </main>
+
+
+<script>
+
+/*
+ * ========================================================
+ * FARMER LOCATION
+ *
+ * If coordinates are not already present in the URL,
+ * request browser location once.
+ * ========================================================
+ */
+
+document.addEventListener(
+    "DOMContentLoaded",
+    function () {
+
+        const params =
+            new URLSearchParams(
+                window.location.search
+            );
+
+
+        if (
+            params.has("lat") &&
+            params.has("lng")
+        ) {
+            return;
+        }
+
+
+        if (
+            !navigator.geolocation
+        ) {
+
+            console.log(
+                "Geolocation is not supported."
+            );
+
+            return;
+        }
+
+
+        navigator.geolocation.getCurrentPosition(
+
+            function (position) {
+
+                const lat =
+                    position.coords.latitude;
+
+                const lng =
+                    position.coords.longitude;
+
+
+                const newUrl =
+                    window.location.pathname
+                    +
+                    "?lat="
+                    +
+                    encodeURIComponent(lat)
+                    +
+                    "&lng="
+                    +
+                    encodeURIComponent(lng);
+
+
+                window.location.replace(
+                    newUrl
+                );
+            },
+
+
+            function (error) {
+
+                console.log(
+                    "Location permission not available:",
+                    error.message
+                );
+
+                /*
+                 * Do not block the page.
+                 * The recommendation page still works
+                 * without distance information.
+                 */
+            },
+
+
+            {
+                enableHighAccuracy: true,
+                timeout: 15000,
+                maximumAge: 0
+            }
+        );
+
+    }
+);
+
+</script>
+
 
 </body>
 

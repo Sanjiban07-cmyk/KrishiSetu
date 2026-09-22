@@ -67,15 +67,22 @@ try {
         throw new Exception("Selected slot was not found.");
     }
 
-    /*
-     * Check whether the slot is still available.
-     */
-    if (
-        $slot['status'] !== 'available' ||
-        $slot['booked_count'] >= $slot['capacity']
-    ) {
-        throw new Exception("Sorry, this slot is already full.");
-    }
+   /*
+ * Check whether the slot is still available.
+ */
+if (
+    $slot['status'] !== 'available' ||
+    $slot['booked_count'] >= $slot['capacity']
+) {
+    throw new Exception("Sorry, this slot is already full.");
+}
+
+/*
+ * Check whether the slot date is still valid.
+ */
+if ($slot['slot_date'] < date('Y-m-d')) {
+    throw new Exception("Sorry, this procurement slot has expired.");
+}
 
     /*
      * Check whether this farmer already booked this slot.

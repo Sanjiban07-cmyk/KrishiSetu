@@ -10,6 +10,36 @@ if (!isset($_SESSION["user_id"]) || $_SESSION["role"] !== "admin") {
     exit;
 }
 
+/* --------------------------------------------------
+   SELECTED ADMIN CENTRE
+   -------------------------------------------------- */
+
+$selectedCentreId = (int)($_SESSION["admin_centre_id"] ?? 0);
+
+if ($selectedCentreId <= 0) {
+    header("Location: dashboard.php");
+    exit;
+}
+
+$centreStmt = $conn->prepare("
+    SELECT id, centre_name, centre_code, block, district
+    FROM procurement_centres
+    WHERE id = ?
+      AND status = 'active'
+    LIMIT 1
+");
+
+$centreStmt->bind_param("i", $selectedCentreId);
+$centreStmt->execute();
+
+$selectedCentre = $centreStmt->get_result()->fetch_assoc();
+
+$centreStmt->close();
+
+if (!$selectedCentre) {
+    die("Selected procurement centre is invalid or inactive.");
+}
+
 
 // --------------------------------------------------
 // UPDATE PAYMENT
@@ -40,39 +70,51 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         if ($status === "paid") {
 
             $stmt = $conn->prepare(
-                "UPDATE payments
-                 SET amount = ?,
-                     payment_reference = ?,
-                     status = ?,
-                     paid_at = NOW()
-                 WHERE id = ?"
+                "UPDATE payments p
+                 INNER JOIN procurement pr
+                     ON p.procurement_id = pr.id
+                 INNER JOIN bookings b
+                     ON pr.booking_id = b.id
+                 SET p.amount = ?,
+                     p.payment_reference = ?,
+                     p.status = ?,
+                     p.paid_at = NOW()
+                 WHERE p.id = ?
+                   AND b.centre_id = ?"
             );
 
             $stmt->bind_param(
-                "dssi",
+                "dssii",
                 $amount,
                 $reference,
                 $status,
-                $payment_id
+                $payment_id,
+                $selectedCentreId
             );
 
         } else {
 
             $stmt = $conn->prepare(
-                "UPDATE payments
-                 SET amount = ?,
-                     payment_reference = ?,
-                     status = ?,
-                     paid_at = NULL
-                 WHERE id = ?"
+                "UPDATE payments p
+                 INNER JOIN procurement pr
+                     ON p.procurement_id = pr.id
+                 INNER JOIN bookings b
+                     ON pr.booking_id = b.id
+                 SET p.amount = ?,
+                     p.payment_reference = ?,
+                     p.status = ?,
+                     p.paid_at = NULL
+                 WHERE p.id = ?
+                   AND b.centre_id = ?"
             );
 
             $stmt->bind_param(
-                "dssi",
+                "dssii",
                 $amount,
                 $reference,
                 $status,
-                $payment_id
+                $payment_id,
+                $selectedCentreId
             );
         }
 
@@ -126,10 +168,15 @@ $sql = "
     INNER JOIN procurement_centres pc
         ON b.centre_id = pc.id
 
+    WHERE b.centre_id = ?
+
     ORDER BY p.id DESC
 ";
 
-$result = $conn->query($sql);
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("i", $selectedCentreId);
+$stmt->execute();
+$result = $stmt->get_result();
 
 ?>
 
@@ -208,6 +255,19 @@ $result = $conn->query($sql);
         .page-description {
             color: var(--text-secondary);
             margin-bottom: 35px;
+        }
+
+        .working-centre {
+            background: var(--primary-light);
+            border: 1px solid #b8dfca;
+            border-radius: var(--radius-md);
+            padding: 14px 18px;
+            margin-bottom: 25px;
+            color: var(--text-secondary);
+        }
+
+        .working-centre strong {
+            color: var(--primary-dark);
         }
 
         .success-message {
@@ -442,6 +502,15 @@ $result = $conn->query($sql);
         <p class="page-description">
             Manage farmer procurement payments and update payment status.
         </p>
+
+        <div class="working-centre">
+            <strong>Working Centre:</strong>
+            <?= htmlspecialchars($selectedCentre["centre_name"]) ?>
+            —
+            <?= htmlspecialchars($selectedCentre["block"]) ?>,
+            <?= htmlspecialchars($selectedCentre["district"]) ?>
+            (<?= htmlspecialchars($selectedCentre["centre_code"]) ?>)
+        </div>
 
 
         <?php if (isset($_GET["updated"])): ?>

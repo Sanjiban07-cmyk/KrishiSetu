@@ -15,6 +15,36 @@ if (!isset($_SESSION["user_id"]) || $_SESSION["role"] !== "admin") {
     exit;
 }
 
+/* --------------------------------------------------
+   SELECTED ADMIN CENTRE
+   -------------------------------------------------- */
+
+$selectedCentreId = (int)($_SESSION["admin_centre_id"] ?? 0);
+
+if ($selectedCentreId <= 0) {
+    header("Location: dashboard.php");
+    exit;
+}
+
+$centreStmt = $conn->prepare("
+    SELECT id, centre_name, centre_code, block, district
+    FROM procurement_centres
+    WHERE id = ?
+      AND status = 'active'
+    LIMIT 1
+");
+
+$centreStmt->bind_param("i", $selectedCentreId);
+$centreStmt->execute();
+
+$selectedCentre = $centreStmt->get_result()->fetch_assoc();
+
+$centreStmt->close();
+
+if (!$selectedCentre) {
+    die("Selected procurement centre is invalid or inactive.");
+}
+
 
 /*
 |--------------------------------------------------------------------------
@@ -23,7 +53,7 @@ if (!isset($_SESSION["user_id"]) || $_SESSION["role"] !== "admin") {
 */
 
 $sql = "
-    SELECT
+    SELECT DISTINCT
         u.id,
         u.name,
         u.mobile,
@@ -35,11 +65,17 @@ $sql = "
     FROM users u
     LEFT JOIN farmers f
         ON f.user_id = u.id
+    INNER JOIN bookings b
+        ON b.farmer_id = f.id
     WHERE u.role = 'farmer'
+      AND b.centre_id = ?
     ORDER BY u.created_at DESC
 ";
 
-$result = $conn->query($sql);
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("i", $selectedCentreId);
+$stmt->execute();
+$result = $stmt->get_result();
 
 ?>
 
@@ -124,6 +160,19 @@ $result = $conn->query($sql);
         .page-description {
             color: var(--text-secondary);
             margin-bottom: 30px;
+        }
+
+        .working-centre {
+            background: var(--primary-light);
+            border: 1px solid #b8dfca;
+            border-radius: var(--radius-md);
+            padding: 14px 18px;
+            margin-bottom: 25px;
+            color: var(--text-secondary);
+        }
+
+        .working-centre strong {
+            color: var(--primary-dark);
         }
 
         .farmer-count {
@@ -283,8 +332,17 @@ $result = $conn->query($sql);
         </h1>
 
         <p class="page-description">
-            View registered farmers and their basic profile information.
+            View farmers who have bookings at the selected procurement centre.
         </p>
+
+        <div class="working-centre">
+            <strong>Working Centre:</strong>
+            <?= htmlspecialchars($selectedCentre["centre_name"]) ?>
+            —
+            <?= htmlspecialchars($selectedCentre["block"]) ?>,
+            <?= htmlspecialchars($selectedCentre["district"]) ?>
+            (<?= htmlspecialchars($selectedCentre["centre_code"]) ?>)
+        </div>
 
 
         <?php if ($result && $result->num_rows > 0): ?>
@@ -294,7 +352,7 @@ $result = $conn->query($sql);
 
                 <?= $result->num_rows ?>
 
-                Registered Farmer<?= $result->num_rows !== 1 ? "s" : "" ?>
+                Farmer<?= $result->num_rows !== 1 ? "s" : "" ?> at This Centre
 
             </div>
 
