@@ -469,7 +469,7 @@
                 Login
             </a>
 
-            <a href="register.php" class="btn btn-primary">
+           <a href="farmer/register.php" class="btn btn-primary">
                 Register
             </a>
 

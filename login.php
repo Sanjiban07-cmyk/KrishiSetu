@@ -386,7 +386,7 @@ $t = $text[$current_language];
 
             <div class="login-register">
                 <?= htmlspecialchars($t['no_account']) ?>
-                <a href="register.php?lang=<?= urlencode($current_language) ?>">
+               <a href="farmer/register.php?lang=<?= urlencode($current_language) ?>">
                     <?= htmlspecialchars($t['register']) ?>
                 </a>
             </div>
